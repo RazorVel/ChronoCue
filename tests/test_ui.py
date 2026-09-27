@@ -45,6 +45,9 @@ class EditorTest(unittest.TestCase):
         self.editor.config_path = self.path
         self.editor.config, self.editor.config_revision = load_config_snapshot(self.path)
         self.editor.selected_id = "first"
+        self.editor.filter_id = "all"
+        self.editor.preset_var = Value("Ungrouped")
+        self.editor.entry_sound_var = Value("Use default")
         self.editor.time_var = Value("13:45")
         self.editor.title_var = Value("Updated")
         self.editor.message_var = Value("Updated message")
@@ -53,6 +56,8 @@ class EditorTest(unittest.TestCase):
         self.editor.tree = Mock()
         self.editor.tree.selection.return_value = []
         self.editor.refresh_tree = Mock()
+        self.editor.refresh_presets = Mock()
+        self.editor.load_preferences = Mock()
         self.errors = patch("chronocue.ui.messagebox.showerror").start()
         self.addCleanup(patch.stopall)
 
@@ -164,7 +169,12 @@ class EditorTest(unittest.TestCase):
             editor.tree = Mock()
             editor.tree.get_children.return_value = []
 
-        with patch.object(ScheduleEditor, "build_ui", build_headless):
+        with patch.object(ScheduleEditor, "build_ui", build_headless), \
+             patch.object(ScheduleEditor, "refresh_presets"), \
+             patch.object(ScheduleEditor, "refresh_tree"), \
+             patch.object(ScheduleEditor, "load_preferences"), \
+             patch.object(ScheduleEditor, "timer_tick"), \
+             patch.object(ScheduleEditor, "drain_results"):
             editor = ScheduleEditor(Mock(), self.path)
             editor.refresh_tree()
         self.assertEqual(self.path.read_bytes(), before)

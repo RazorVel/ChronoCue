@@ -24,7 +24,7 @@ class InstallationTest(unittest.TestCase):
         self.bin.mkdir()
         self.log = self.root / "systemctl.jsonl"
         self.env = os.environ.copy()
-        for name in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "CHRONOCUE_CONFIG", "PYTHONPATH"):
+        for name in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "CHRONOCUE_CONFIG", "PYTHONPATH"):
             self.env.pop(name, None)
         self.env.update(
             HOME=str(self.home),
@@ -42,6 +42,8 @@ class InstallationTest(unittest.TestCase):
                 'args': sys.argv[1:],
                 'config': os.environ.get('CHRONOCUE_CONFIG'),
                 'source': os.environ.get('PYTHONPATH'),
+                'state': os.environ.get('XDG_STATE_HOME'),
+                'cache': os.environ.get('XDG_CACHE_HOME'),
             }))
         """)
         self.stub("systemctl", """
@@ -57,6 +59,7 @@ class InstallationTest(unittest.TestCase):
                 print(os.environ.get('TEST_LOAD_STATE', 'loaded'))
         """)
         self.stub("notify-send", "pass")
+        self.stub("paplay", "pass")
 
     def stub(self, name, source):
         path = self.bin / name
@@ -122,6 +125,8 @@ class InstallationTest(unittest.TestCase):
                 self.assertEqual(launch["args"], ["-m", "chronocue." + module, "--config", "manual schedule.json"])
                 self.assertEqual(launch["config"], str(self.config))
                 self.assertEqual(launch["source"], str(self.app / "src"))
+                self.assertEqual(launch["state"], str(self.home / ".local/state"))
+                self.assertEqual(launch["cache"], str(self.home / ".cache"))
 
     def test_reinstall_preserves_schedule_replaces_source_and_restarts(self):
         self.install()
@@ -138,14 +143,20 @@ class InstallationTest(unittest.TestCase):
     def test_special_character_paths_are_literal_and_config_is_persisted(self):
         self.env["XDG_DATA_HOME"] = str(self.root / 'data $(touch INJECTED) `touch ALSO_INJECTED` "quoted"')
         self.env["XDG_CONFIG_HOME"] = str(self.root / 'config $literal "quoted"')
+        self.env["XDG_STATE_HOME"] = str(self.root / "custom-state")
+        self.env["XDG_CACHE_HOME"] = str(self.root / "custom-cache")
         self.install()
         launch_env = self.env.copy()
         launch_env.pop("XDG_DATA_HOME")
         launch_env.pop("XDG_CONFIG_HOME")
+        launch_env.pop("XDG_STATE_HOME")
+        launch_env.pop("XDG_CACHE_HOME")
         for module in ("daemon", "ui"):
             launch = self.launcher(module, env=launch_env)
             self.assertEqual(launch["source"], self.env["XDG_DATA_HOME"] + "/chronocue/src")
             self.assertEqual(launch["config"], self.env["XDG_CONFIG_HOME"] + "/chronocue/schedule.json")
+            self.assertEqual(launch["state"], self.env["XDG_STATE_HOME"])
+            self.assertEqual(launch["cache"], self.env["XDG_CACHE_HOME"])
         self.assertFalse((self.root / "INJECTED").exists())
         self.assertFalse((self.root / "ALSO_INJECTED").exists())
 
@@ -178,7 +189,7 @@ class InstallationTest(unittest.TestCase):
         self.assertEqual(list(self.home.iterdir()), [])
 
     def test_relative_xdg_directories_are_rejected_before_mutation(self):
-        for variable in ("XDG_DATA_HOME", "XDG_CONFIG_HOME"):
+        for variable in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"):
             with self.subTest(variable=variable):
                 self.env[variable] = "relative-directory"
                 result = self.run_script("install.sh")

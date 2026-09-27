@@ -1,26 +1,63 @@
 {
-  "settings": {
-    "poll_seconds": 5,
-    "max_late_seconds": 120,
-    "notification_timeout_ms": 10000,
-    "urgency": "normal"
-  },
+  "presets": [
+    {
+      "id": "work",
+      "name": "Work",
+      "enabled": true
+    },
+    {
+      "id": "weekend",
+      "name": "Weekend",
+      "enabled": false
+    }
+  ],
   "schedules": [
     {
       "id": "lunch",
+      "preset_id": "work",
       "time": "13:00",
       "title": "Lunch / Rest",
-      "message": "Proper Break",
+      "message": "Take a proper break",
       "days": [
         "mon",
         "tue",
         "wed",
         "thu",
-        "fri",
+        "fri"
+      ],
+      "enabled": true,
+      "ringtone": "soft-marimba"
+    },
+    {
+      "id": "weekend-reading",
+      "preset_id": "weekend",
+      "time": "10:00",
+      "title": "Reading time",
+      "message": "Pick up a chapter",
+      "days": [
         "sat",
         "sun"
       ],
-      "enabled": true
+      "enabled": true,
+      "ringtone": null
     }
-  ]
+  ],
+  "settings": {
+    "poll_seconds": 5,
+    "max_late_seconds": 120,
+    "notification_timeout_ms": 10000,
+    "urgency": "normal",
+    "sound_enabled": true,
+    "ringtone": "bright-bell",
+    "volume": 80
+  },
+  "pomodoro": {
+    "focus_minutes": 25,
+    "short_break_minutes": 5,
+    "long_break_minutes": 15,
+    "long_break_every": 4,
+    "auto_start_breaks": false,
+    "auto_start_focus": false,
+    "ringtone": null
+  }
 }

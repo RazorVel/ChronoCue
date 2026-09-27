@@ -24,7 +24,7 @@ class NotifierTest(unittest.TestCase):
         run.assert_not_called()
 
     def test_launch_error_and_timeout_report_failure(self):
-        for error in (OSError("launch failed"), subprocess.TimeoutExpired("notify-send", 10)):
+        for error in (OSError("launch failed"), ValueError("embedded null byte"), subprocess.TimeoutExpired("notify-send", 10)):
             with self.subTest(error=error), patch(
                 "chronocue.notifier.shutil.which", return_value="/usr/bin/notify-send"
             ), patch("chronocue.notifier.subprocess.run", side_effect=error), self.assertLogs(level="ERROR"):

@@ -12,17 +12,33 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from .audio import DEFAULT_RINGTONE, RINGTONE_BY_ID
+
 
 APP_NAME = "chronocue"
 DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+DEFAULT_POMODORO = {
+    "focus_minutes": 25,
+    "short_break_minutes": 5,
+    "long_break_minutes": 15,
+    "long_break_every": 4,
+    "auto_start_breaks": False,
+    "auto_start_focus": False,
+    "ringtone": None,
+}
 DEFAULT_CONFIG = {
     "settings": {
         "poll_seconds": 5,
         "max_late_seconds": 120,
         "notification_timeout_ms": 10000,
         "urgency": "normal",
+        "sound_enabled": True,
+        "ringtone": DEFAULT_RINGTONE,
+        "volume": 80,
     },
     "schedules": [],
+    "presets": [],
+    "pomodoro": DEFAULT_POMODORO.copy(),
 }
 _UNSET = object()
 
@@ -51,6 +67,13 @@ def parse_clock(value: str):
     return hour, minute
 
 
+def validate_ringtone(value, context, *, allow_default=True):
+    if value is None and allow_default:
+        return
+    if not isinstance(value, str) or (value != "silent" and value not in RINGTONE_BY_ID):
+        raise ValueError(f"{context} must select a built-in ringtone or silent")
+
+
 def validate_config(data):
     """Return a normalized copy; never mutate the caller or discard extra fields."""
     if not isinstance(data, dict):
@@ -72,7 +95,56 @@ def validate_config(data):
         raise ValueError("settings.notification_timeout_ms must be an integer from -1 to 2147483647")
     if settings["urgency"] not in ("low", "normal", "critical"):
         raise ValueError("settings.urgency must be low, normal, or critical")
+    if not isinstance(settings["sound_enabled"], bool):
+        raise ValueError("settings.sound_enabled must be true or false")
+    validate_ringtone(settings["ringtone"], "settings.ringtone", allow_default=False)
+    volume = settings["volume"]
+    if isinstance(volume, bool) or not isinstance(volume, int) or not 0 <= volume <= 100:
+        raise ValueError("settings.volume must be an integer from 0 to 100")
     result["settings"] = settings
+
+    supplied_pomodoro = data.get("pomodoro", {})
+    if not isinstance(supplied_pomodoro, dict):
+        raise ValueError("'pomodoro' must be an object")
+    pomodoro = {**DEFAULT_POMODORO, **supplied_pomodoro}
+    for field in ("focus_minutes", "short_break_minutes", "long_break_minutes", "long_break_every"):
+        value = pomodoro[field]
+        upper = 12 if field == "long_break_every" else 240
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= upper:
+            raise ValueError(f"pomodoro.{field} must be an integer from 1 to {upper}")
+    for field in ("auto_start_breaks", "auto_start_focus"):
+        if not isinstance(pomodoro[field], bool):
+            raise ValueError(f"pomodoro.{field} must be true or false")
+    validate_ringtone(pomodoro["ringtone"], "pomodoro.ringtone")
+    result["pomodoro"] = pomodoro
+
+    presets = data.get("presets", [])
+    if not isinstance(presets, list):
+        raise ValueError("'presets' must be a list")
+    preset_ids, preset_names = set(), set()
+    normalized_presets = []
+    for index, original in enumerate(presets):
+        context = f"presets[{index}]"
+        if not isinstance(original, dict):
+            raise ValueError(f"{context} must be an object")
+        preset = copy.deepcopy(original)
+        for field in ("id", "name"):
+            if not isinstance(preset.get(field), str) or not preset[field].strip():
+                raise ValueError(f"{context}.{field} must be a nonempty string")
+            if "\0" in preset[field]:
+                raise ValueError(f"{context}.{field} cannot contain null characters")
+        preset["name"] = preset["name"].strip()
+        if preset["name"].casefold() in ("ungrouped", "all schedules"):
+            raise ValueError("Choose a preset name other than Ungrouped or All schedules")
+        if preset["id"] in preset_ids or preset["name"].casefold() in preset_names:
+            raise ValueError("Preset IDs and names must be unique")
+        preset.setdefault("enabled", False)
+        if not isinstance(preset["enabled"], bool):
+            raise ValueError(f"{context}.enabled must be true or false")
+        preset_ids.add(preset["id"])
+        preset_names.add(preset["name"].casefold())
+        normalized_presets.append(preset)
+    result["presets"] = normalized_presets
 
     schedules = data.get("schedules", [])
     if not isinstance(schedules, list):
@@ -121,6 +193,10 @@ def validate_config(data):
         if entry["id"] in used_ids:
             raise ValueError(f"{context}.id duplicates {entry['id']!r}")
         used_ids.add(entry["id"])
+        preset_id = entry.get("preset_id")
+        if preset_id is not None and (not isinstance(preset_id, str) or preset_id not in preset_ids):
+            raise ValueError(f"{context}.preset_id must refer to an existing preset or be null")
+        validate_ringtone(entry.get("ringtone"), f"{context}.ringtone")
         normalized.append(entry)
     result["schedules"] = normalized
     return result

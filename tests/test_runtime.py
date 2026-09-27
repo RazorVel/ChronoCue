@@ -40,6 +40,7 @@ def example_config(**entry_changes):
             "max_late_seconds": 120,
             "notification_timeout_ms": 10000,
             "urgency": "normal",
+            "sound_enabled": False,
         },
         "schedules": [entry],
     }
@@ -124,7 +125,7 @@ class RuntimeTest(unittest.TestCase):
             else:
                 raise StopLoop
 
-        with patch("chronocue.daemon.time.sleep", side_effect=sleep), patch(
+        with patch("chronocue.daemon.time.monotonic", side_effect=[0, 5]), patch("chronocue.daemon.time.sleep", side_effect=sleep), patch(
             "chronocue.daemon.datetime"
         ) as clock, patch("chronocue.daemon.send_notification", return_value=True) as send:
             clock.now.return_value = datetime(2026, 9, 27, 13)
@@ -153,13 +154,29 @@ class RuntimeTest(unittest.TestCase):
             else:
                 raise StopLoop
 
-        with patch("chronocue.daemon.time.sleep", side_effect=sleep), patch(
+        with patch("chronocue.daemon.time.monotonic", side_effect=[0, 5]), patch("chronocue.daemon.time.sleep", side_effect=sleep), patch(
             "chronocue.daemon.datetime"
         ) as clock, patch("chronocue.daemon.send_notification", return_value=True) as send:
             clock.now.side_effect = [datetime(2026, 9, 27, 12, 59, 59), datetime(2026, 9, 27, 13)]
             with self.assertLogs(level="ERROR"), self.assertRaises(StopLoop):
                 _run_loop(self.config_path, history)
         send.assert_called_once_with("Lunch", "Break", 10000, "normal")
+
+    def test_timer_is_checked_independently_of_slow_schedule_polling(self):
+        config = example_config()
+        config["settings"]["poll_seconds"] = 3600
+        self.config_path.write_text(json.dumps(config))
+        history = DeliveryHistory(self.history_path)
+        with patch("chronocue.daemon.time.monotonic", side_effect=[0, 1]), patch(
+            "chronocue.daemon.time.sleep", side_effect=[None, StopLoop]
+        ) as sleep, patch("chronocue.daemon.deliver_due") as deliver, patch(
+            "chronocue.daemon.PomodoroStore"
+        ) as timer:
+            with self.assertRaises(StopLoop):
+                _run_loop(self.config_path, history)
+        self.assertEqual(timer.return_value.tick.call_count, 2)
+        deliver.assert_called_once()
+        self.assertEqual([call.args for call in sleep.call_args_list], [(1,), (1,)])
 
     def test_corrupt_history_recovers(self):
         self.history_path.write_text('{"sent": [null]}', encoding="utf-8")

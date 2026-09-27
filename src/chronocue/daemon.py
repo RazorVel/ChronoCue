@@ -1,6 +1,5 @@
 import argparse
 import fcntl
-import hashlib
 import json
 import logging
 import os
@@ -9,8 +8,12 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import DAY_NAMES, load_config, parse_clock, resolve_config_path
+from .config import DAY_NAMES, DEFAULT_POMODORO, load_config, parse_clock, resolve_config_path
 from .notifier import send_notification
+from .audio import play_configured_sound
+from .presets import schedule_is_active
+from .pomodoro import PomodoroStore
+from .state import state_path
 
 
 def due_occurrence(entry, now: datetime, max_late_seconds: int):
@@ -37,12 +40,7 @@ def entry_is_due(entry, now: datetime, max_late_seconds: int) -> bool:
 
 
 def delivery_state_path(config_path: Path) -> Path:
-    state_home = os.environ.get("XDG_STATE_HOME", "")
-    state_root = Path(state_home) if state_home else Path.home() / ".local" / "state"
-    if not state_root.is_absolute():
-        state_root = Path.home() / ".local" / "state"
-    config_id = hashlib.sha256(str(config_path.resolve()).encode("utf-8")).hexdigest()
-    return state_root / "chronocue" / f"{config_id}.json"
+    return state_path(config_path)
 
 
 class DeliveryHistory:
@@ -110,6 +108,8 @@ def deliver_due(config, now: datetime, history: DeliveryHistory):
     history.prune(now)
     for index, entry in enumerate(config["schedules"]):
         try:
+            if not schedule_is_active(entry, config.get("presets", [])):
+                continue
             scheduled = due_occurrence(entry, now, settings["max_late_seconds"])
             if scheduled is None:
                 continue
@@ -126,6 +126,7 @@ def deliver_due(config, now: datetime, history: DeliveryHistory):
                 settings["urgency"],
             ):
                 history.record(occurrence)
+                play_configured_sound(settings, entry.get("ringtone"))
                 logging.info("Notification sent: %s", title)
             else:
                 logging.error("notify-send failed for: %s", title)
@@ -155,8 +156,11 @@ def run(config_path):
 def _run_loop(config_path, history):
     cached_config = None
     cached_version = None
+    next_schedule_poll = 0
+    pomodoro = PomodoroStore(history.path.with_name(history.path.stem + ".pomodoro.json"))
 
     while True:
+        reloaded = False
         try:
             try:
                 stat = config_path.stat()
@@ -170,6 +174,7 @@ def _run_loop(config_path, history):
                 candidate = load_config(config_path)
                 cached_config = candidate
                 cached_version = current_version
+                reloaded = True
                 logging.info("Configuration reloaded")
         except Exception:
             logging.exception("Could not load configuration; retaining last valid configuration")
@@ -177,8 +182,23 @@ def _run_loop(config_path, history):
                 time.sleep(5)
                 continue
 
-        deliver_due(cached_config, datetime.now(), history)
-        time.sleep(cached_config["settings"]["poll_seconds"])
+        now_monotonic = time.monotonic()
+        if reloaded or now_monotonic >= next_schedule_poll:
+            deliver_due(cached_config, datetime.now(), history)
+            next_schedule_poll = now_monotonic + cached_config["settings"]["poll_seconds"]
+        def notify_timer(title, message):
+            settings = cached_config["settings"]
+            success = send_notification(title, message, settings["notification_timeout_ms"], settings["urgency"])
+            if success:
+                play_configured_sound(settings, cached_config.get("pomodoro", {}).get("ringtone"))
+            return success
+
+        try:
+            pomodoro.tick(cached_config.get("pomodoro", DEFAULT_POMODORO), notify_timer)
+        except (OSError, ValueError, TypeError):
+            logging.exception("Could not update Pomodoro timer; schedule reminders continue")
+        # Timer controls and preset changes remain responsive even with slow schedule polling.
+        time.sleep(1)
 
 
 def main(argv=None):

@@ -10,10 +10,12 @@ fi
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 
-for directory in "$HOME" "$DATA_HOME" "$CONFIG_HOME"; do
+for directory in "$HOME" "$DATA_HOME" "$CONFIG_HOME" "$STATE_HOME" "$CACHE_HOME"; do
     if [[ "$directory" != /* ]]; then
-        echo "HOME, XDG_DATA_HOME and XDG_CONFIG_HOME must be absolute paths." >&2
+        echo "HOME and XDG data, config, state, and cache directories must be absolute paths." >&2
         exit 1
     fi
 done
@@ -56,6 +58,13 @@ if ! command -v notify-send >/dev/null 2>&1; then
     exit 1
 fi
 
+if ! command -v paplay >/dev/null 2>&1 &&
+   ! command -v pw-play >/dev/null 2>&1 &&
+   ! command -v aplay >/dev/null 2>&1; then
+    echo "Missing audio player. On Ubuntu/Debian: sudo apt install pulseaudio-utils" >&2
+    exit 1
+fi
+
 if ! command -v systemctl >/dev/null 2>&1 ||
    ! systemctl --user show-environment >/dev/null; then
     echo "Cannot contact the user systemd manager. Run this from your desktop session." >&2
@@ -82,10 +91,14 @@ for module in daemon ui; do
         printf '#!/usr/bin/env bash\n\n'
         printf 'app_source=%q\n' "$APP_DIR/src"
         printf 'default_config=%q\n' "$CONFIG_PATH"
+        printf 'default_state_home=%q\n' "$STATE_HOME"
+        printf 'default_cache_home=%q\n' "$CACHE_HOME"
         printf 'python_bin=%q\n' "$PYTHON_BIN"
         printf '%s\n' \
             'export PYTHONPATH="$app_source${PYTHONPATH:+:$PYTHONPATH}"' \
-            'export CHRONOCUE_CONFIG="${CHRONOCUE_CONFIG:-$default_config}"'
+            'export CHRONOCUE_CONFIG="${CHRONOCUE_CONFIG:-$default_config}"' \
+            'export XDG_STATE_HOME="${XDG_STATE_HOME:-$default_state_home}"' \
+            'export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$default_cache_home}"'
         printf 'exec "$python_bin" -m chronocue.%s "$@"\n' "$module"
     } > "$STAGING_DIR/chronocue-$module"
     chmod +x "$STAGING_DIR/chronocue-$module"
@@ -105,9 +118,22 @@ if [ ! -e "$CONFIG_PATH" ] && [ ! -L "$CONFIG_PATH" ]; then
     "poll_seconds": 5,
     "max_late_seconds": 120,
     "notification_timeout_ms": 10000,
-    "urgency": "normal"
+    "urgency": "normal",
+    "sound_enabled": true,
+    "ringtone": "bright-bell",
+    "volume": 80
   },
-  "schedules": []
+  "schedules": [],
+  "presets": [],
+  "pomodoro": {
+    "focus_minutes": 25,
+    "short_break_minutes": 5,
+    "long_break_minutes": 15,
+    "long_break_every": 4,
+    "auto_start_breaks": false,
+    "auto_start_focus": false,
+    "ringtone": null
+  }
 }
 EOF
 fi

@@ -1,50 +1,44 @@
 # ChronoCue
 
-A small Linux desktop reminder daemon with a graphical schedule editor. Built
-for lightweight desktop environments such as i3, using Python's standard
-library, Tk, `notify-send`, and a user-level systemd service.
+A small Linux desktop reminder app with schedule presets, a Pomodoro clock, and
+32 selectable alert sounds. Built for lightweight desktops such as i3 using
+Python's standard library, Tk, desktop notifications, and a user systemd service.
 
-Schedules live outside the application, normally at
-`~/.config/chronocue/schedule.json`. The daemon reloads valid edits automatically.
+Version **1.1.0** adds three editor tabs: **Schedules**, **Pomodoro**, and **Sounds**.
+Existing 1.0 schedules continue to work without manual migration.
 
-## Requirements
+## Install or update
 
-- Linux with Python 3.10 or newer and a running systemd user session.
-- Tk for the editor and `notify-send` for notifications.
-- A desktop notification daemon, such as dunst on i3.
+Requirements: Linux, Python 3.10+, Tk, `notify-send`, a desktop notification
+service, a running systemd user session, and one of `paplay`, `pw-play`, or `aplay`.
 
 On Ubuntu/Debian:
 
 ```bash
-sudo apt install python3 python3-tk libnotify-bin
+sudo apt install python3 python3-tk libnotify-bin pulseaudio-utils
 ```
 
-If your desktop does not already provide notifications:
+If your desktop does not already provide a notification service, install one
+such as dunst:
 
 ```bash
 sudo apt install dunst
-```
-
-Check desktop notification delivery before installing:
-
-```bash
 notify-send "Test" "Notifications work"
 ```
 
-## Install or update
-
-From this repository's root, in your desktop session:
+From the repository root, in your desktop session:
 
 ```bash
 ./scripts/install.sh
+~/.local/bin/chronocue-ui
 ```
 
-The installer checks dependencies and user-systemd access, copies the
-application, and enables and restarts `chronocue.service`. Run it again after
-updating the source to install the new version. Existing schedules are preserved.
-Do not run it with `sudo`.
+Do not run the installer with `sudo`. It checks dependencies and systemd access,
+installs the app, and enables and restarts `chronocue.service`. Run it again after
+updating the source to upgrade. Your schedules and timer state are preserved.
+Add `~/.local/bin` to your `PATH` to use the commands without their full paths.
 
-Default installed locations:
+Default locations:
 
 ```text
 ~/.local/bin/chronocue-daemon
@@ -52,25 +46,128 @@ Default installed locations:
 ~/.local/share/chronocue/
 ~/.config/chronocue/schedule.json
 ~/.config/systemd/user/chronocue.service
+~/.local/state/chronocue/       # delivery history and Pomodoro state
+~/.cache/chronocue/            # generated ringtone WAV files
 ```
 
-`XDG_DATA_HOME` and `XDG_CONFIG_HOME` are supported; when set for installation,
-they must be absolute paths. Both launchers remember the configuration path
-chosen during installation. Add `~/.local/bin` to your `PATH`, or start the
-editor with its full path:
+The installer supports absolute `XDG_DATA_HOME`, `XDG_CONFIG_HOME`,
+`XDG_STATE_HOME`, and `XDG_CACHE_HOME` paths. Launchers remember the chosen config,
+state, and cache locations so the editor and service share the same timer.
 
-```bash
-~/.local/bin/chronocue-ui
-```
+## Schedule presets
 
-The editor can add, update, disable, delete, and test reminders. Saves are
-atomic. If another editor or process changes the file, a stale save is rejected
-with instructions to reload. Opening the editor does not rewrite an existing
-configuration.
+Presets are named groups you can activate or deactivate whenever you need them.
+Multiple groups can be active together, for example **Work**, **Exercise**, and
+**Study**.
+
+1. In **Schedules**, click **New** under Schedule presets and name the group.
+2. Add schedules to it using the **Preset** field. To group existing schedules,
+   select one or more rows, choose a group next to **Move to**, and click **Assign**.
+3. Select the preset in the sidebar and click **Activate preset** to summon it.
+4. Click **Deactivate preset** to stop its reminders while keeping everything saved.
+
+New and duplicated presets start inactive. Individual schedules retain their
+own Enabled setting. Ungrouped schedules always follow their own Enabled setting,
+independently of presets. You can rename or duplicate a group. Deleting a preset
+asks for confirmation and removes its schedules; deactivate it to keep them.
+
+The sidebar also filters the table. The **On** column shows whether a schedule
+is effective, combining its own Enabled setting with its preset's state.
+Activating a preset follows the normal timing grace period; it does not replay
+old or already-delivered reminders.
+
+Edits are saved atomically. If another editor or process changes the file, stale
+saves are rejected with Reload instructions. Opening the editor does not rewrite
+an existing configuration.
+
+## Pomodoro clock
+
+The **Pomodoro** tab includes Start, Pause/Resume, Skip phase, and Reset controls,
+a countdown, phase progress, and a count of completed focus sessions.
+
+Defaults are 25 minutes of focus, a 5-minute short break, and a 15-minute long
+break after every four completed focus sessions. Durations are configurable from
+1 to 240 minutes; the long-break interval can be 1 to 12 focus sessions.
+
+Each completed phase produces a desktop alert and its chosen sound. Breaks and
+focus sessions wait for you to press Start by default. Enable either automatic
+start option to continue into that phase automatically. Skipping a focus phase
+does not count it as completed.
+
+The reminder daemon runs the timer, so it continues after the editor closes and
+survives ordinary daemon restarts. The editor requires the daemon to be running
+before Start; use `systemctl --user start chronocue` if necessary. When running
+from source, start the daemon with the same `--config` path as the editor.
+
+Changing settings affects the next phase, leaving a running or paused phase's
+remaining time intact. Reset starts a new cycle with the saved settings. After
+suspend or downtime, only the current overdue phase completes; automatic mode
+starts a fresh next phase when the daemon resumes. It does not fast-forward
+through many missed focus sessions. Timer deadlines use the system clock, so
+manual clock changes affect the remaining time. ChronoCue does not wake the PC.
+
+Pending completion alerts are retried if desktop notification delivery fails.
+With automatic phases, a newer completion replaces an undelivered older alert.
+As with schedule reminders, a crash between sending an alert and recording its
+success can produce a repeat.
+
+## Alert sounds
+
+In **Sounds**, choose a default ringtone, adjust volume, preview it, and save.
+There are **32 original, offline ringtones** in four collections:
+
+| Bells | Digital | Soft | Melodies |
+| --- | --- | --- | --- |
+| Bright Bell | Double Ping | Soft Marimba | Fresh Start |
+| Door Chime | Radar | Bamboo | Little Victory |
+| Glass Drops | Arcade Rise | Warm Piano | Take a Breath |
+| Temple Bell | Orbit | Gentle Wave | Time to Focus |
+| Silver Triangle | Pixel Knock | Quiet Fifth | Sunrise |
+| Morning Chimes | Clear Signal | Raindrop | Sparkle |
+| Tiny Glockenspiel | Space Call | Wood Blocks | Rolling Stones |
+| Deep Gong | Triple Alert | Evening Glow | Homecoming |
+
+Each schedule and the Pomodoro timer can use the default sound, override it with
+another ringtone, or select **Silent**. The global sound switch mutes automatic
+schedule and timer audio. Preview deliberately plays the selected sound even
+when that switch is off; volume zero and Silent remain silent.
+
+Ringtones are synthesized and cached locally, with no downloads, third-party
+recordings, or extra Python packages. Playback runs in a background worker and
+tries the available Linux audio players. Audio failure does not prevent a
+successful desktop notification from being recorded; check daemon logs if visual
+alerts arrive but sound does not. **Test alert** checks the selected schedule's
+notification and sound together.
 
 ## Configuration
 
-The first launch creates an empty configuration if the file is absent:
+Normally stored at `~/.config/chronocue/schedule.json`. A complete example is in
+[examples/schedule.example.json](examples/schedule.example.json). The first launch
+creates an empty configuration if the file is absent.
+
+A preset and its schedule look like this:
+
+```json
+{
+  "presets": [
+    {"id": "work", "name": "Work", "enabled": true}
+  ],
+  "schedules": [
+    {
+      "id": "lunch",
+      "preset_id": "work",
+      "time": "13:00",
+      "title": "Lunch / Rest",
+      "message": "Take a proper break",
+      "days": ["mon", "tue", "wed", "thu", "fri"],
+      "enabled": true,
+      "ringtone": "soft-marimba"
+    }
+  ]
+}
+```
+
+Omitted settings use these defaults:
 
 ```json
 {
@@ -78,109 +175,84 @@ The first launch creates an empty configuration if the file is absent:
     "poll_seconds": 5,
     "max_late_seconds": 120,
     "notification_timeout_ms": 10000,
-    "urgency": "normal"
+    "urgency": "normal",
+    "sound_enabled": true,
+    "ringtone": "bright-bell",
+    "volume": 80
   },
-  "schedules": []
+  "pomodoro": {
+    "focus_minutes": 25,
+    "short_break_minutes": 5,
+    "long_break_minutes": 15,
+    "long_break_every": 4,
+    "auto_start_breaks": false,
+    "auto_start_focus": false,
+    "ringtone": null
+  }
 }
 ```
 
-Add entries to `schedules`, for example:
+- Schedule times require strict 24-hour `HH:MM`. Days are `mon` through `sun`;
+  omitted, null, or empty days means every day. Use `enabled: false` to disable.
+- IDs must be unique, nonempty strings. Keep IDs stable when hand-editing.
+  Legacy schedules without IDs get stable generated IDs; the editor persists
+  those IDs when you save.
+- `preset_id: null` or an omitted preset means ungrouped. Preset IDs and names
+  must be unique, and a referenced preset must exist.
+- Schedule and Pomodoro `ringtone: null` means use the default; `"silent"` mutes
+  that alert. Ringtone IDs are the lowercase names in the table joined by hyphens,
+  such as `take-a-breath`.
+- `poll_seconds` accepts numbers from 1 to 86400; `max_late_seconds` accepts
+  integers from 0 to 86400. Keep polling shorter than the grace period. A zero
+  grace period requires an exact clock match and usually misses reminders.
+- `notification_timeout_ms` accepts integers from -1 to 2147483647: -1 asks for
+  the notification server's default, 0 requests no expiry. The server controls
+  whether expiry is honored. Urgency is `low`, `normal`, or `critical`.
+- Volume is an integer from 0 to 100. Unknown configuration fields are preserved.
 
-```json
-{
-  "id": "lunch",
-  "time": "13:00",
-  "title": "Lunch / Rest",
-  "message": "Proper Break",
-  "days": ["mon", "tue", "wed", "thu", "fri"],
-  "enabled": true
-}
-```
-
-See [examples/schedule.example.json](examples/schedule.example.json) for a full
-configuration.
-
-| Field | Accepted values |
-| --- | --- |
-| `poll_seconds` | Number from 1 to 86400; default 5 |
-| `max_late_seconds` | Integer from 0 to 86400; default 120 |
-| `notification_timeout_ms` | Integer from -1 to 2147483647; -1 uses the notification server's default, 0 requests no expiry |
-| `urgency` | `low`, `normal`, or `critical` |
-| `id` | Unique, nonempty string; keep it stable when editing a reminder |
-| `time` | Strict 24-hour `HH:MM`, such as `09:05` |
-| `title` | Nonempty string; defaults to `Scheduled Alert` |
-| `message` | String; defaults to empty |
-| `days` | List of `mon` through `sun`; case and surrounding spaces are normalized |
-| `enabled` | JSON `true` or `false`; defaults to `true` |
-
-For compatibility, omitted, `null`, or empty `days` means every day. Use
-`"enabled": false` to disable a reminder. Entries without IDs receive stable
-generated IDs in memory; the editor persists them when you save. Explicit IDs
-are recommended for schedules edited by hand. Unrecognized fields are preserved
-by the editor.
-
-Check a configuration without starting the daemon or sending a notification:
+Validate without starting the daemon or sending alerts:
 
 ```bash
 chronocue-daemon --check
 chronocue-daemon --config ~/my-schedule.json --check
 ```
 
-If an edit contains invalid JSON or invalid values, the running daemon keeps its
-last valid configuration and logs the error. At startup, an invalid file is
-retried until corrected. If a file disappears after loading, the daemon keeps
-using the last valid schedule until a replacement appears.
+The running daemon retains its last valid configuration when an edit is invalid
+or the file disappears. An invalid startup file is retried until corrected.
+The daemon checks configuration changes and the Pomodoro timer once per second.
+`poll_seconds` controls schedule checks independently; a valid configuration edit
+also triggers an immediate schedule check.
 
-### Timing and delivery
+Schedule times follow the computer's local clock. A reminder remains eligible
+through `max_late_seconds` after its scheduled time, inclusive, including across
+midnight using the scheduled day's weekday. Older missed reminders are skipped.
+Failed visual notifications retry during this window. Successful deliveries are
+remembered across ordinary restarts, per configuration path. A per-config lock
+prevents duplicate daemon instances using the same state directory. A crash in
+the send-to-record window, a history-write failure, or deleting history can
+still cause repeats. Skipped daylight-saving times are subject to the grace
+period; repeated wall-clock times share one daily occurrence.
 
-Times use the computer's local clock. A reminder is eligible from its scheduled
-time through `max_late_seconds` afterward, inclusive. This grace period also
-works across midnight and uses the scheduled day's weekday. For example, a
-Sunday `23:59` reminder can still arrive on Monday at `00:00:30` with a 120-second
-grace period. Older missed reminders are skipped.
-
-Keep `poll_seconds` shorter than the grace period. Setting the grace period to
-zero requires an exact clock match and will usually miss reminders. A failed
-notification is retried on later polls while the reminder is still eligible.
-Notification commands time out after 10 seconds so a stuck notification server
-cannot block the daemon indefinitely. The desktop notification server controls
-whether and how expiry is honored.
-
-Successful deliveries are remembered across reloads and ordinary restarts in
-`$XDG_STATE_HOME/chronocue/`, defaulting to `~/.local/state/chronocue/`. Each
-configuration path has separate history and a lock that prevents a second
-daemon from running for that path. Editing a reminder's title does not repeat
-an already delivered occurrence when its ID and time are unchanged.
-
-Delivery is not an exactly-once guarantee: a crash between sending and saving
-history, a history-write failure, or deleting the history can cause a repeat.
-Clock and daylight-saving changes follow local wall time: skipped times are
-subject to the grace period, and a repeated local time shares the same daily
-occurrence. ChronoCue does not wake the computer from suspend.
-
-### Custom configuration location
-
-The daemon and editor both accept an explicit path:
+### Custom paths
 
 ```bash
 chronocue-daemon --config ~/my-schedule.json
 chronocue-ui --config ~/my-schedule.json
 ```
 
-For an installed service and editor to share a custom default, install with:
+To set a shared installation default:
 
 ```bash
 CHRONOCUE_CONFIG="$HOME/my-schedule.json" ./scripts/install.sh
 ```
 
 Precedence is `--config`, then `CHRONOCUE_CONFIG` in the launcher's environment,
-then its remembered installation default. When running directly from source or
-a Python package installation, the default is
+then its installation default. Direct source/package launches use
 `$XDG_CONFIG_HOME/chronocue/schedule.json`, falling back to `~/.config` when that
-variable is empty or relative. Exporting a variable in a terminal does not
-change an already-running service's environment.
+variable is empty or relative. State and cache have analogous XDG defaults.
+Exporting a variable in a terminal does not change an already-running service.
 
-## Service management
+## Service management and i3
 
 ```bash
 systemctl --user status chronocue
@@ -190,63 +262,70 @@ systemctl --user start chronocue
 journalctl --user -u chronocue -f
 ```
 
-If notifications work in a terminal but not from the service, export your
-graphical session environment to the user systemd instance. For i3, add:
+If terminal notifications work but service notifications do not, add to i3:
 
 ```text
 exec_always --no-startup-id dbus-update-activation-environment --systemd DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS
 exec_always --no-startup-id systemctl --user import-environment DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS
 ```
 
-Then reload i3 or log out and back in. If dunst is your notification daemon,
-start it from i3 with `exec --no-startup-id dunst`; do not start a second
-notification daemon alongside one already provided by your desktop.
+Then reload i3 or log out and back in. Start dunst with
+`exec --no-startup-id dunst` if it is your notification daemon; do not start a
+second notification daemon alongside one supplied by the desktop.
 
-## Development
+## Development and tests
 
-Run without installing a service:
+Run the daemon and editor in separate terminals, without installing a service:
 
 ```bash
-PYTHONPATH=src python3 -m chronocue.daemon --config /tmp/chronocue-dev.json --check
-PYTHONPATH=src python3 -m chronocue.ui --config /tmp/chronocue-dev.json
 PYTHONPATH=src python3 -m chronocue.daemon --config /tmp/chronocue-dev.json
+PYTHONPATH=src python3 -m chronocue.ui --config /tmp/chronocue-dev.json
 ```
 
-Run the test suite:
+Run the normal suite (real widget tests are skipped unless explicitly enabled):
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -v
 bash -n scripts/install.sh scripts/uninstall.sh
 ```
 
-Tests use temporary configurations, delivery history, and isolated installation
-homes; notification and service commands are replaced with test doubles. No
-personal schedules or desktop services are changed. Editor behavior is tested
-without displaying a window; Python/Tk must still be installed.
+Include real Tk interaction tests on an isolated virtual display:
 
-The package also provides `chronocue-daemon` and `chronocue-ui` entry points when
-installed with `pip` in a virtual environment. This installs the Python package
-only; `scripts/install.sh` manages the desktop service independently.
+```bash
+sudo apt install xvfb xauth
+CHRONOCUE_TEST_GUI=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src \
+  xvfb-run -a python3 -W error::ResourceWarning -m unittest discover -s tests -v
+```
+
+Tests use temporary configurations, timer state, audio caches, and installation
+homes. Desktop notification, audio, and service commands use test doubles; the
+suite does not change personal schedules or play sounds. CI runs the full suite
+on Python 3.10, 3.12, and 3.14 and builds the package.
+
+Installing with `pip` in a virtual environment supplies `chronocue-daemon` and
+`chronocue-ui` entry points only. The desktop installer manages the service
+independently.
 
 ## Uninstall
 
-Run with the same `XDG_DATA_HOME` and `XDG_CONFIG_HOME` used for installation:
+Use the same `XDG_DATA_HOME` and `XDG_CONFIG_HOME` as installation:
 
 ```bash
 ./scripts/uninstall.sh
 ```
 
-This stops the service and removes the installed application while retaining
-schedules. To remove the default configuration directory as well:
+This stops the service and removes the application, retaining schedules. To
+remove the default configuration directory too:
 
 ```bash
 ./scripts/uninstall.sh --purge
 ```
 
-Custom configuration files outside the ChronoCue configuration directory and
-delivery history are preserved. If the user manager cannot be reached or the
-service cannot be stopped, uninstall exits before removing application files.
+Custom config files outside that directory, delivery history, Pomodoro state,
+and audio caches are preserved. Uninstall stops before file removal if it
+cannot contact the user manager or stop the service.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). The synthesized ringtone motifs are included under
+the same license.

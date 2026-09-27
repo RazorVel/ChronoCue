@@ -20,10 +20,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Check shell scripts
         run: bash -n scripts/install.sh scripts/uninstall.sh
+      - name: Install virtual display
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth
       - name: Run regression tests
         env:
           PYTHONPATH: src
           PYTHONDONTWRITEBYTECODE: '1'
-        run: python -m unittest discover -s tests -v
+          CHRONOCUE_TEST_GUI: '1'
+        run: xvfb-run -a -s "-screen 0 1440x1000x24 -nolisten tcp -extension GLX" python -W error::ResourceWarning -m unittest discover -s tests -v
       - name: Build package
         run: python -m pip wheel --no-deps --wheel-dir dist .

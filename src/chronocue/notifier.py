@@ -35,7 +35,7 @@ def send_notification(
             check=False,
             timeout=NOTIFICATION_PROCESS_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
         logging.error("Could not send notification: %s", exc)
         return False
     return result.returncode == 0
