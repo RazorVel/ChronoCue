@@ -1,0 +1,16 @@
+[Unit]
+Description=ChronoCue daemon
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/chronocue-daemon
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

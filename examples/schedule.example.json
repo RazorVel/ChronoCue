@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "poll_seconds": 5,
+    "max_late_seconds": 120,
+    "notification_timeout_ms": 10000,
+    "urgency": "normal"
+  },
+  "schedules": [
+    {
+      "id": "lunch",
+      "time": "13:00",
+      "title": "Lunch / Rest",
+      "message": "Proper Break",
+      "days": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+        "sun"
+      ],
+      "enabled": true
+    }
+  ]
+}
