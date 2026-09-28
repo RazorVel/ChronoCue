@@ -1,11 +1,11 @@
 # ChronoCue
 
-A small Linux desktop reminder app with schedule presets, a Pomodoro clock, and
-32 selectable alert sounds. Built for lightweight desktops such as i3 using
+A small Linux desktop reminder app with schedule presets, Pomodoro, a countdown timer,
+a stopwatch, and 32 selectable alert sounds. Built for lightweight desktops such as i3 using
 Python's standard library, Tk, desktop notifications, and a user systemd service.
 
-Version **1.1.0** adds three editor tabs: **Schedules**, **Pomodoro**, and **Sounds**.
-Existing 1.0 schedules continue to work without manual migration.
+Version **1.2.0** adds **Timer** and **Stopwatch** tabs, persistent notifications,
+and prompt audio playback. Existing schedules continue to work without manual migration.
 
 ## Install or update
 
@@ -46,7 +46,7 @@ Default locations:
 ~/.local/share/chronocue/
 ~/.config/chronocue/schedule.json
 ~/.config/systemd/user/chronocue.service
-~/.local/state/chronocue/       # delivery history and Pomodoro state
+~/.local/state/chronocue/       # delivery history and clock states
 ~/.cache/chronocue/            # generated ringtone WAV files
 ```
 
@@ -111,9 +111,43 @@ With automatic phases, a newer completion replaces an undelivered older alert.
 As with schedule reminders, a crash between sending an alert and recording its
 success can produce a repeat.
 
+## Countdown timer and stopwatch
+
+In **Timer**, set hours, minutes, and seconds (1 second through 99:59:59), choose a
+completion sound, and press **Start**. Pause/Resume preserves the remaining time;
+Reset clears the current run so you can change its duration. Start saves your
+chosen duration and sound. The countdown works independently of Pomodoro.
+
+The reminder service delivers the completion alert even with the window closed.
+An overdue countdown completes once after sleep or a service restart. Failed
+notifications retry; Reset explicitly cancels a pending completion. The sound
+chosen at Start stays with that run. Global volume and mute still apply.
+
+In **Stopwatch**, use Start, Pause/Resume, Lap, and Reset. The lap table shows each
+lap's duration and total elapsed time, with up to 100 saved laps per session.
+Elapsed time, running/paused status, and laps survive closing and reopening the
+window. The stopwatch works without the reminder service. Multiple windows share
+the same clocks and synchronize their controls.
+
+Like Pomodoro, these clocks use the system clock to survive closing, sleep, and
+restarts; manual clock adjustments can affect elapsed or remaining time.
+
+## Persistent notifications
+
+In **Sounds & alerts**, set **Keep notifications on screen** to **Until dismissed**
+and save. New configurations use this by default. Existing timeout preferences
+are preserved when upgrading; change this setting to enable persistent alerts.
+You can also choose 10 seconds, 30 seconds, 1 minute, 5 minutes, or the desktop's
+default. All scheduled, Pomodoro, countdown, and test alerts use this preference.
+
+ChronoCue requests no expiration (`notification_timeout_ms: 0`) without waiting
+for dismissal before playing audio. Dunst supports persistent alerts and normally
+closes them when clicked. Other desktop notification services may override the
+requested lifetime or mouse behavior.
+
 ## Alert sounds
 
-In **Sounds**, choose a default ringtone, adjust volume, preview it, and save.
+In **Sounds & alerts**, choose a default ringtone, adjust volume, preview it, and save.
 There are **32 original, offline ringtones** in four collections:
 
 | Bells | Digital | Soft | Melodies |
@@ -127,14 +161,16 @@ There are **32 original, offline ringtones** in four collections:
 | Tiny Glockenspiel | Space Call | Wood Blocks | Rolling Stones |
 | Deep Gong | Triple Alert | Evening Glow | Homecoming |
 
-Each schedule and the Pomodoro timer can use the default sound, override it with
+Each schedule, Pomodoro, and the countdown timer can use the default sound, override it with
 another ringtone, or select **Silent**. The global sound switch mutes automatic
 schedule and timer audio. Preview deliberately plays the selected sound even
 when that switch is off; volume zero and Silent remain silent.
 
 Ringtones are synthesized and cached locally, with no downloads, third-party
-recordings, or extra Python packages. Playback runs in a background worker and
-tries the available Linux audio players. Audio failure does not prevent a
+recordings, or extra Python packages. Playback requests low latency from the available Linux audio players. Up to four
+short cues can start concurrently, so one cue does not queue behind another.
+Additional simultaneous sounds are skipped with a log message. A stalled player
+is stopped after the cue duration plus one second before trying the next backend. Audio failure does not prevent a
 successful desktop notification from being recorded; check daemon logs if visual
 alerts arrive but sound does not. **Test alert** checks the selected schedule's
 notification and sound together.
@@ -174,12 +210,13 @@ Omitted settings use these defaults:
   "settings": {
     "poll_seconds": 5,
     "max_late_seconds": 120,
-    "notification_timeout_ms": 10000,
+    "notification_timeout_ms": 0,
     "urgency": "normal",
     "sound_enabled": true,
     "ringtone": "bright-bell",
     "volume": 80
   },
+  "countdown": {"duration_seconds": 300, "ringtone": null},
   "pomodoro": {
     "focus_minutes": 25,
     "short_break_minutes": 5,
@@ -199,7 +236,7 @@ Omitted settings use these defaults:
   those IDs when you save.
 - `preset_id: null` or an omitted preset means ungrouped. Preset IDs and names
   must be unique, and a referenced preset must exist.
-- Schedule and Pomodoro `ringtone: null` means use the default; `"silent"` mutes
+- Schedule, Pomodoro, and countdown `ringtone: null` means use the default; `"silent"` mutes
   that alert. Ringtone IDs are the lowercase names in the table joined by hyphens,
   such as `take-a-breath`.
 - `poll_seconds` accepts numbers from 1 to 86400; `max_late_seconds` accepts
@@ -219,7 +256,7 @@ chronocue-daemon --config ~/my-schedule.json --check
 
 The running daemon retains its last valid configuration when an edit is invalid
 or the file disappears. An invalid startup file is retried until corrected.
-The daemon checks configuration changes and the Pomodoro timer once per second.
+The daemon checks configuration changes, Pomodoro, and countdown completion once per second.
 `poll_seconds` controls schedule checks independently; a valid configuration edit
 also triggers an immediate schedule check.
 
@@ -321,7 +358,7 @@ remove the default configuration directory too:
 ./scripts/uninstall.sh --purge
 ```
 
-Custom config files outside that directory, delivery history, Pomodoro state,
+Custom config files outside that directory, delivery history, all clock states,
 and audio caches are preserved. Uninstall stops before file removal if it
 cannot contact the user manager or stop the service.
 

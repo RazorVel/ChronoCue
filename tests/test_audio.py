@@ -52,11 +52,37 @@ class AudioTest(unittest.TestCase):
         self.assertIn('Install', reason)
 
     def test_player_fallback_and_timeout(self):
-        with patch('chronocue.audio.available_players', return_value=['/fake/paplay', '/fake/aplay']), patch('chronocue.audio.ringtone_file', return_value=Path('/fake/sound.wav')), patch('chronocue.audio.subprocess.run', side_effect=[subprocess.TimeoutExpired('paplay', 10), Mock(returncode=0)]) as run:
-            self.assertTrue(audio.play_sound('radar')[0])
-            self.assertEqual(run.call_count, 2)
-            self.assertEqual(run.call_args.kwargs['timeout'], 10)
-            self.assertEqual(run.call_args.args[0], ['/fake/aplay', '/fake/sound.wav'])
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {'XDG_CACHE_HOME': temporary}):
+            path = audio.ringtone_file('radar', 80)
+            with patch('chronocue.audio.available_players', return_value=['/fake/paplay', '/fake/aplay']), patch('chronocue.audio.subprocess.run', side_effect=[subprocess.TimeoutExpired('paplay', 2), Mock(returncode=0)]) as run:
+                self.assertTrue(audio.play_sound('radar')[0])
+                self.assertEqual(run.call_count, 2)
+                self.assertLess(run.call_args.kwargs['timeout'], 3)
+                self.assertIn('--latency-msec=50', run.call_args_list[0].args[0])
+                self.assertEqual(run.call_args.args[0], ['/fake/aplay', '--buffer-time=50000', str(path)])
+
+    def test_new_sound_does_not_wait_behind_a_slow_sound(self):
+        entered = threading.Barrier(5)
+        release = threading.Event()
+        done = [threading.Event() for _ in range(4)]
+        def play(*_):
+            entered.wait(timeout=3)
+            release.wait(timeout=3)
+            return True, ''
+        with patch('chronocue.audio.play_sound', side_effect=play):
+            player = audio.AudioPlayer()
+            try:
+                for event in done:
+                    self.assertTrue(player.play('radar', callback=lambda result, event=event: event.set()))
+                entered.wait(timeout=3)
+                rejected = Mock()
+                with self.assertLogs(level='WARNING'):
+                    self.assertFalse(player.play('radar', callback=rejected))
+                self.assertFalse(rejected.call_args.args[0][0])
+            finally:
+                release.set()
+                for event in done:
+                    self.assertTrue(event.wait(3))
 
     def test_worker_is_nonblocking_and_reports_result(self):
         entered, release, completed = threading.Event(), threading.Event(), threading.Event()

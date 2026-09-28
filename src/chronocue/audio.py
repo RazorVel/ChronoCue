@@ -7,7 +7,6 @@ import logging
 import math
 import os
 from pathlib import Path
-import queue
 import shutil
 import subprocess
 import sys
@@ -145,59 +144,69 @@ def play_sound(ringtone_id, volume=80):
         return False, 'No audio player found. Install pulseaudio-utils, pipewire-bin, or alsa-utils.'
     try:
         path = ringtone_file(ringtone_id, volume)
+        with wave.open(str(path), 'rb') as sound:
+            # Bound a failed backend by this short cue's length, not ten seconds.
+            timeout = sound.getnframes() / sound.getframerate() + 1
         for binary in players:
             try:
+                options = {
+                    'paplay': ['--latency-msec=50'],
+                    'pw-play': ['--latency=50ms'],
+                    'aplay': ['--buffer-time=50000'],
+                }.get(Path(binary).name, [])
                 result = subprocess.run(
-                    [binary, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    check=False, timeout=10,
+                    [binary, *options, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    check=False, timeout=timeout,
                 )
                 if result.returncode == 0:
                     return True, ''
             except (OSError, subprocess.TimeoutExpired):
                 continue
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, wave.Error, EOFError) as exc:
         return False, str(exc)
     return False, 'Audio playback failed. Check your audio output and desktop audio service.'
 
 
 class AudioPlayer:
-    """Serialize short sounds without blocking the daemon or Tk event loop."""
+    """Start short cues immediately; never queue a stale alarm behind other sounds."""
 
     def __init__(self):
-        self.tasks = queue.Queue(maxsize=16)
-        self.thread = None
-        self.lock = threading.Lock()
+        self.slots = threading.BoundedSemaphore(4)
 
     def play(self, ringtone_id, volume=80, callback=None):
         if ringtone_id == 'silent' or volume == 0:
             if callback:
                 callback((True, ''))
             return True
-        with self.lock:
-            if self.thread is None:
-                self.thread = threading.Thread(target=self._work, daemon=True, name='chronocue-audio')
-                self.thread.start()
-        try:
-            self.tasks.put_nowait((ringtone_id, volume, callback))
-            return True
-        except queue.Full:
+        if not self.slots.acquire(blocking=False):
+            logging.warning('Alert audio: four sounds are already playing')
             if callback:
                 callback((False, 'Audio is busy. Try again in a moment.'))
             return False
+        thread = threading.Thread(target=self._work, args=(ringtone_id, volume, callback),
+                                  daemon=True, name='chronocue-audio')
+        try:
+            thread.start()
+        except RuntimeError:
+            self.slots.release()
+            if callback:
+                callback((False, 'Could not start audio playback. Try again.'))
+            return False
+        return True
 
-    def _work(self):
-        while True:
-            ringtone_id, volume, callback = self.tasks.get()
+    def _work(self, ringtone_id, volume, callback):
+        try:
             try:
                 result = play_sound(ringtone_id, volume)
-                if not result[0]:
-                    logging.warning('Alert audio: %s', result[1])
-                if callback:
-                    callback(result)
             except Exception:
                 logging.exception('Could not play alert audio')
-            finally:
-                self.tasks.task_done()
+                result = False, 'Could not play alert audio.'
+            if not result[0]:
+                logging.warning('Alert audio: %s', result[1])
+            if callback:
+                callback(result)
+        finally:
+            self.slots.release()
 
 
 PLAYER = AudioPlayer()

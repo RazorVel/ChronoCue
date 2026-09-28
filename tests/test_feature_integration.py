@@ -82,3 +82,60 @@ class FeatureIntegrationTest(unittest.TestCase):
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait(timeout=3)
+
+    def test_countdown_alert_sound_and_no_repeat_after_daemon_restart(self):
+        from chronocue.clocks import CountdownStore
+        with tempfile.TemporaryDirectory(prefix='chronocue-countdown-') as temporary:
+            root = Path(temporary)
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            notification_log, sound_log = root / 'notify.jsonl', root / 'audio.jsonl'
+            for name, output in (('notify-send', notification_log), ('paplay', sound_log)):
+                executable = bin_dir / name
+                executable.write_text(f'#!{sys.executable}\nimport sys,json\n'
+                                      f'with open({str(output)!r}, "a") as output: output.write(json.dumps(sys.argv[1:]) + "\\n")\n')
+                executable.chmod(0o700)
+            env = {**os.environ, 'PATH': str(bin_dir), 'XDG_STATE_HOME': str(root / 'state'),
+                   'XDG_CACHE_HOME': str(root / 'cache'), 'PYTHONDONTWRITEBYTECODE': '1',
+                   'PYTHONPATH': str(Path(chronocue.__file__).resolve().parent.parent)}
+            path = root / 'schedule.json'
+            config = validate_config({'settings': {'poll_seconds': 3600},
+                                      'countdown': {'duration_seconds': 1, 'ringtone': 'radar'}})
+            save_config(config, path)
+            with patch.dict(os.environ, {'XDG_STATE_HOME': env['XDG_STATE_HOME']}):
+                store = CountdownStore.for_config(path)
+            store.command('start', config['countdown'])
+            process = None
+            with (root / 'daemon.log').open('w') as log:
+                def launch():
+                    return subprocess.Popen([sys.executable, '-m', 'chronocue.daemon', '--config', str(path)],
+                                            env=env, stdout=log, stderr=log)
+                def stop(process):
+                    process.terminate()
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=3)
+                try:
+                    process = launch()
+                    deadline = time.monotonic() + 8
+                    while (not sound_log.exists() or not sound_log.read_text().strip() or store.snapshot().get('pending_alert') is not None) and time.monotonic() < deadline:
+                        self.assertIsNone(process.poll())
+                        time.sleep(.05)
+                    self.assertTrue(sound_log.exists(), (root / 'daemon.log').read_text())
+                    args = json.loads(notification_log.read_text().splitlines()[0])
+                    self.assertEqual(args[args.index('--expire-time') + 1], '0')
+                    self.assertEqual(args[-2], '[ChronoCue] Timer complete')
+                    self.assertIn('radar-80.wav', sound_log.read_text())
+                    self.assertEqual(store.snapshot()['status'], 'finished')
+                    self.assertIsNone(store.snapshot()['pending_alert'])
+                    stop(process)
+                    process = launch()
+                    time.sleep(1.3)
+                    self.assertIsNone(process.poll())
+                    self.assertEqual(len(notification_log.read_text().splitlines()), 1)
+                    self.assertEqual(len(sound_log.read_text().splitlines()), 1)
+                finally:
+                    if process is not None and process.poll() is None:
+                        stop(process)

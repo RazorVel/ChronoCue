@@ -26,11 +26,12 @@ DEFAULT_POMODORO = {
     "auto_start_focus": False,
     "ringtone": None,
 }
+DEFAULT_COUNTDOWN = {"duration_seconds": 300, "ringtone": None}
 DEFAULT_CONFIG = {
     "settings": {
         "poll_seconds": 5,
         "max_late_seconds": 120,
-        "notification_timeout_ms": 10000,
+        "notification_timeout_ms": 0,
         "urgency": "normal",
         "sound_enabled": True,
         "ringtone": DEFAULT_RINGTONE,
@@ -39,6 +40,7 @@ DEFAULT_CONFIG = {
     "schedules": [],
     "presets": [],
     "pomodoro": DEFAULT_POMODORO.copy(),
+    "countdown": DEFAULT_COUNTDOWN.copy(),
 }
 _UNSET = object()
 
@@ -117,6 +119,16 @@ def validate_config(data):
             raise ValueError(f"pomodoro.{field} must be true or false")
     validate_ringtone(pomodoro["ringtone"], "pomodoro.ringtone")
     result["pomodoro"] = pomodoro
+
+    supplied_countdown = data.get("countdown", {})
+    if not isinstance(supplied_countdown, dict):
+        raise ValueError("'countdown' must be an object")
+    countdown = {**DEFAULT_COUNTDOWN, **supplied_countdown}
+    duration = countdown["duration_seconds"]
+    if isinstance(duration, bool) or not isinstance(duration, int) or not 1 <= duration <= 359999:
+        raise ValueError("countdown.duration_seconds must be an integer from 1 to 359999")
+    validate_ringtone(countdown["ringtone"], "countdown.ringtone")
+    result["countdown"] = countdown
 
     presets = data.get("presets", [])
     if not isinstance(presets, list):

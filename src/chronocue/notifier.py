@@ -10,7 +10,7 @@ NOTIFICATION_PROCESS_TIMEOUT_SECONDS = 10
 def send_notification(
     title: str,
     message: str,
-    timeout_ms: int = 10000,
+    timeout_ms: int = 0,
     urgency: str = "normal",
 ) -> bool:
     binary = shutil.which("notify-send")

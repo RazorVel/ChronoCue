@@ -117,7 +117,7 @@ if [ ! -e "$CONFIG_PATH" ] && [ ! -L "$CONFIG_PATH" ]; then
   "settings": {
     "poll_seconds": 5,
     "max_late_seconds": 120,
-    "notification_timeout_ms": 10000,
+    "notification_timeout_ms": 0,
     "urgency": "normal",
     "sound_enabled": true,
     "ringtone": "bright-bell",
@@ -125,6 +125,7 @@ if [ ! -e "$CONFIG_PATH" ] && [ ! -L "$CONFIG_PATH" ]; then
   },
   "schedules": [],
   "presets": [],
+  "countdown": {"duration_seconds": 300, "ringtone": null},
   "pomodoro": {
     "focus_minutes": 25,
     "short_break_minutes": 5,

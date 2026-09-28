@@ -100,3 +100,73 @@ class WidgetTest(unittest.TestCase):
         self.errors.assert_called_once()
         self.assertIn('service', self.errors.call_args.args[1])
         self.assertEqual(self.editor.pomodoro.snapshot(self.editor.config['pomodoro'])['status'], 'idle')
+
+    def test_notification_lifetime_saves_and_preserves_custom_value(self):
+        self.editor.notification_lifetime_var.set('Until dismissed')
+        self.editor.save_sound_settings()
+        self.assertEqual(load_config(self.path)['settings']['notification_timeout_ms'], 0)
+        self.editor.notification_lifetime_var.set('30 seconds')
+        self.editor.save_sound_settings()
+        self.editor.reload_config()
+        self.assertEqual(self.editor.notification_lifetime_var.get(), '30 seconds')
+        config = load_config(self.path)
+        config['settings']['notification_timeout_ms'] = 12345
+        save_config(config, self.path)
+        self.editor.reload_config()
+        self.editor.save_sound_settings()
+        self.assertEqual(load_config(self.path)['settings']['notification_timeout_ms'], 12345)
+        self.errors.assert_not_called()
+
+    def test_countdown_controls_and_independent_stopwatch(self):
+        for key, value in (('hours', '0'), ('minutes', '0'), ('seconds', '5')):
+            self.editor.duration_vars[key].set(value)
+        self.editor.countdown_sound_var.set('Radar')
+        with patch('chronocue.ui.daemon_is_running', return_value=True):
+            self.editor.countdown_start.invoke()
+        self.root.update()
+        self.assertEqual(self.editor.countdown.snapshot()['status'], 'running')
+        self.assertEqual(load_config(self.path)['countdown'], {'duration_seconds': 5, 'ringtone': 'radar'})
+        self.assertEqual(str(self.editor.duration_inputs[0]['state']), 'disabled')
+        self.editor.stopwatch_start.invoke()
+        self.editor.stopwatch_lap.invoke()
+        self.assertEqual(len(self.editor.lap_tree.get_children()), 1)
+        self.editor.countdown_pause.invoke()
+        self.assertEqual(self.editor.countdown.snapshot()['status'], 'paused')
+        self.assertEqual(self.editor.stopwatch.snapshot()['status'], 'running')
+        self.assertEqual(self.editor.countdown_start['text'], 'Resume')
+        self.editor.stopwatch_pause.invoke()
+        self.assertEqual(self.editor.stopwatch.snapshot()['status'], 'paused')
+        self.editor.stopwatch_command('reset')
+        self.assertEqual(self.editor.lap_tree.get_children(), ())
+        self.errors.assert_not_called()
+        self.assertFalse(self.callback_errors)
+
+    def test_zero_countdown_and_missing_service_do_not_start(self):
+        for variable in self.editor.duration_vars.values():
+            variable.set('0')
+        with patch('chronocue.ui.daemon_is_running', return_value=True):
+            self.editor.countdown_command('start')
+        self.assertEqual(self.editor.countdown.snapshot()['status'], 'idle')
+        self.editor.duration_vars['seconds'].set('5')
+        self.editor.countdown_command('start')
+        self.assertEqual(self.editor.countdown.snapshot()['status'], 'idle')
+        self.assertEqual(self.errors.call_count, 2)
+
+    def test_second_window_shares_timer_stopwatch_and_laps(self):
+        with patch('chronocue.ui.daemon_is_running', return_value=True):
+            self.editor.countdown_command('start')
+        self.editor.stopwatch_command('start')
+        self.editor.stopwatch_command('lap')
+        window = tk.Toplevel(self.root)
+        window.withdraw()
+        other = ScheduleEditor(window, self.path)
+        try:
+            self.assertEqual(other.single_status_var.get(), 'Counting down')
+            self.assertEqual(other.stopwatch_status_var.get(), 'Running')
+            self.assertEqual(len(other.lap_tree.get_children()), 1)
+            other.stopwatch_command('pause')
+            self.editor.refresh_clocks()
+            self.assertEqual(self.editor.stopwatch_status_var.get(), 'Paused')
+        finally:
+            other.close()
+        self.errors.assert_not_called()

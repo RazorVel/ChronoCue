@@ -8,7 +8,8 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import DAY_NAMES, DEFAULT_POMODORO, load_config, parse_clock, resolve_config_path
+from .config import DAY_NAMES, DEFAULT_COUNTDOWN, DEFAULT_POMODORO, load_config, parse_clock, resolve_config_path
+from .clocks import CountdownStore
 from .notifier import send_notification
 from .audio import play_configured_sound
 from .presets import schedule_is_active
@@ -158,6 +159,7 @@ def _run_loop(config_path, history):
     cached_version = None
     next_schedule_poll = 0
     pomodoro = PomodoroStore(history.path.with_name(history.path.stem + ".pomodoro.json"))
+    countdown = CountdownStore(history.path.with_name(history.path.stem + ".countdown.json"))
 
     while True:
         reloaded = False
@@ -197,6 +199,17 @@ def _run_loop(config_path, history):
             pomodoro.tick(cached_config.get("pomodoro", DEFAULT_POMODORO), notify_timer)
         except (OSError, ValueError, TypeError):
             logging.exception("Could not update Pomodoro timer; schedule reminders continue")
+        def notify_countdown(title, message, ringtone):
+            settings = cached_config["settings"]
+            success = send_notification(title, message, settings["notification_timeout_ms"], settings["urgency"])
+            if success:
+                play_configured_sound(settings, ringtone)
+            return success
+
+        try:
+            countdown.tick(cached_config.get("countdown", DEFAULT_COUNTDOWN), notify_countdown)
+        except (OSError, ValueError, TypeError):
+            logging.exception("Could not update countdown; other reminders continue")
         # Timer controls and preset changes remain responsive even with slow schedule polling.
         time.sleep(1)
 
