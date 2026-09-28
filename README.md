@@ -7,6 +7,43 @@ Python's standard library, Tk, desktop notifications, and a user systemd service
 Version **1.2.0** adds **Timer** and **Stopwatch** tabs, persistent notifications,
 and prompt audio playback. Existing schedules continue to work without manual migration.
 
+## Preview
+
+Group reminders into presets and activate them whenever you need them.
+
+![Schedules grouped under an active Workday preset, with a selected reminder and its editing controls](docs/images/schedules.png)
+
+<details>
+<summary>See Pomodoro, timer, stopwatch, and alert settings</summary>
+
+### Pomodoro
+
+Follow a focus and break rhythm with progress tracking and configurable durations.
+
+![Pomodoro focus session in progress, with two completed sessions and configurable focus and break settings](docs/images/pomodoro.png)
+
+### Countdown timer
+
+Set a duration, pause or resume, and receive a completion alert with your chosen sound.
+
+![A ten-minute countdown with seven minutes and thirty seconds remaining and Clear Signal selected as its completion sound](docs/images/timer.png)
+
+### Stopwatch
+
+Track elapsed time and save individual laps, even across closing and reopening the editor.
+
+![Paused stopwatch showing three saved laps with their individual durations and total elapsed times](docs/images/stopwatch.png)
+
+### Sounds and persistent alerts
+
+Choose from 32 offline ringtones and keep notifications visible until dismissed.
+
+![Ringtone catalog, volume controls, and notification lifetime set to Until dismissed](docs/images/sounds-and-alerts.png)
+
+</details>
+
+*Screenshots show ChronoCue 1.2.0 with sample data. Appearance may vary by desktop theme.*
+
 ## Install or update
 
 Requirements: Linux, Python 3.10+, Tk, `notify-send`, a desktop notification
