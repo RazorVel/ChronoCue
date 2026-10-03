@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.3.0
+
+- Save schedule edits by pressing Enter in the Time, Title, or Message field.
+- Toggle individual schedules directly from the Status column or with Space;
+  distinguish Enabled, Paused, and Preset off states.
+- Export human-editable preset templates and existing presets without internal
+  IDs, then safely import them with preview, validation, fresh IDs, inactive
+  defaults, and copy-on-conflict naming.
+- Standardize the default configuration path as
+  `~/.config/chronocue/config.json` while preserving the legacy
+  `schedule.json` during installer migration.
+- Finish remaining ChronoCue rename cleanup and centralize notification title
+  formatting.
+- Add focused regression tests for schedule interactions, preset transfer,
+  installation migration, naming, and notification behavior.
+
+## 1.2.0
+
+- Add independent Timer and Stopwatch tabs with persistent state, pause/resume,
+  reset, and saved stopwatch laps.
+- Keep desktop notifications visible until dismissed by default on supported
+  notification services.
+- Improve alert sound responsiveness with bounded concurrent playback.
+- Add real application screenshots and a preview gallery to the README.
+
 ## 1.1.0
 
 - Create, rename, duplicate, activate, and deactivate schedule presets; assign

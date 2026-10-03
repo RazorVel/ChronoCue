@@ -20,7 +20,7 @@ def send_notification(
 
     command = [
         binary,
-        "--app-name=ChronoCue",
+        f"--app-name={APP_DISPLAY_NAME}",
         "--urgency", urgency,
         "--expire-time", str(timeout_ms),
         "--",

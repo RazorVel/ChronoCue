@@ -24,7 +24,8 @@ APP_DIR="$DATA_HOME/chronocue"
 BIN_DIR="$HOME/.local/bin"
 SYSTEMD_DIR="$CONFIG_HOME/systemd/user"
 CONFIG_DIR="$CONFIG_HOME/chronocue"
-CONFIG_PATH="${CHRONOCUE_CONFIG:-$CONFIG_DIR/schedule.json}"
+CONFIG_PATH="${CHRONOCUE_CONFIG:-$CONFIG_DIR/config.json}"
+LEGACY_CONFIG_PATH="$CONFIG_DIR/schedule.json"
 case "$CONFIG_PATH" in
     '~') CONFIG_PATH="$HOME" ;;
     '~/'*) CONFIG_PATH="$HOME/${CONFIG_PATH:2}" ;;
@@ -79,6 +80,14 @@ fi
 
 echo "Installing ChronoCue..."
 mkdir -p "$APP_DIR" "$BIN_DIR" "$SYSTEMD_DIR" "$(dirname "$CONFIG_PATH")"
+
+# Keep schedules from releases that used the pre-rename default filename.
+if [ -z "${CHRONOCUE_CONFIG:-}" ] &&
+   [ ! -e "$CONFIG_PATH" ] && [ ! -L "$CONFIG_PATH" ] &&
+   { [ -e "$LEGACY_CONFIG_PATH" ] || [ -L "$LEGACY_CONFIG_PATH" ]; }; then
+    cp -P -- "$LEGACY_CONFIG_PATH" "$CONFIG_PATH"
+    echo "Migrated existing schedule to: $CONFIG_PATH"
+fi
 
 # Finish copying and generating files before replacing the installed source.
 STAGING_DIR="$(mktemp -d "$APP_DIR/.install.XXXXXXXX")"

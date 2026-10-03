@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from chronocue.config import DAY_NAMES, load_config_snapshot, save_config
-from chronocue.ui import ScheduleEditor, main
+from chronocue.ui import ScheduleEditor, main, schedule_status
 
 
 class Value:
@@ -21,6 +21,16 @@ class Value:
 
     def set(self, value):
         self.value = value
+
+
+class StatusLabelTest(unittest.TestCase):
+    def test_distinguishes_schedule_and_preset_state(self):
+        preset = [{'id': 'work', 'name': 'Work', 'enabled': False}]
+        self.assertEqual(schedule_status({'enabled': False}, preset), '○ Paused')
+        self.assertEqual(schedule_status({'enabled': True, 'preset_id': 'work'}, preset), '◐ Preset off')
+        preset[0]['enabled'] = True
+        self.assertEqual(schedule_status({'enabled': True, 'preset_id': 'work'}, preset), '● Enabled')
+        self.assertEqual(schedule_status({'enabled': True}, preset), '● Enabled')
 
 
 class EditorTest(unittest.TestCase):
@@ -111,6 +121,22 @@ class EditorTest(unittest.TestCase):
         self.assertEqual([entry["id"] for entry in config["schedules"]], ["first"])
         self.assertIsNone(self.editor.selected_id)
         self.assertEqual(self.editor.title_var.get(), "")
+        self.errors.assert_not_called()
+
+    def test_enter_saves_the_schedule(self):
+        self.editor.title_var.set('Saved with Enter')
+        self.assertEqual(self.editor.save_entry_from_return(), 'break')
+        self.assertEqual(load_config_snapshot(self.path)[0]['schedules'][0]['title'], 'Saved with Enter')
+        self.errors.assert_not_called()
+
+    def test_schedule_status_toggle_saves_immediately(self):
+        self.editor.status_var = Value('')
+        self.assertTrue(self.editor.toggle_schedule('first'))
+        self.assertFalse(load_config_snapshot(self.path)[0]['schedules'][0]['enabled'])
+        self.assertEqual(self.editor.status_var.get(), 'Original: Paused')
+        self.assertTrue(self.editor.toggle_schedule('first'))
+        self.assertTrue(load_config_snapshot(self.path)[0]['schedules'][0]['enabled'])
+        self.assertEqual(self.editor.status_var.get(), 'Original: Enabled')
         self.errors.assert_not_called()
 
     def test_external_change_blocks_add_update_and_delete_until_reload(self):

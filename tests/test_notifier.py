@@ -13,6 +13,7 @@ class NotifierTest(unittest.TestCase):
             self.assertTrue(send_notification("Title", "--urgency=critical", 0, "low"))
         command = run.call_args.args[0]
         self.assertEqual(command[-3:], ["--", "[ChronoCue] Title", "--urgency=critical"])
+        self.assertIn("--app-name=ChronoCue", command)
         self.assertIn("0", command)
         self.assertEqual(run.call_args.kwargs["timeout"], 10)
 

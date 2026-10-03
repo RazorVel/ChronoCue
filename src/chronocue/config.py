@@ -52,7 +52,7 @@ class ConfigConflictError(ValueError):
 def default_config_path() -> Path:
     value = os.environ.get("XDG_CONFIG_HOME", "")
     config_home = Path(value) if value and Path(value).is_absolute() else Path.home() / ".config"
-    return config_home / APP_NAME / "schedule.json"
+    return config_home / APP_NAME / "config.json"
 
 
 def resolve_config_path(path=None) -> Path:

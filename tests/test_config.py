@@ -167,9 +167,9 @@ class PersistenceTest(unittest.TestCase):
 
     def test_xdg_defaults_and_path_precedence(self):
         with patch.dict(os.environ, {'HOME': self.temp.name, 'XDG_CONFIG_HOME': '', 'CHRONOCUE_CONFIG': ''}):
-            self.assertEqual(default_config_path(), Path(self.temp.name) / '.config/chronocue/schedule.json')
+            self.assertEqual(default_config_path(), Path(self.temp.name) / '.config/chronocue/config.json')
             with patch.dict(os.environ, {'XDG_CONFIG_HOME': 'relative'}):
-                self.assertEqual(default_config_path(), Path(self.temp.name) / '.config/chronocue/schedule.json')
+                self.assertEqual(default_config_path(), Path(self.temp.name) / '.config/chronocue/config.json')
             with patch.dict(os.environ, {'XDG_CONFIG_HOME': str(self.path.parent), 'CHRONOCUE_CONFIG': '~/custom.json'}):
                 self.assertEqual(resolve_config_path(), Path(self.temp.name) / 'custom.json')
                 self.assertEqual(resolve_config_path(self.path), self.path)

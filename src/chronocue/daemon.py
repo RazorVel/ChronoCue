@@ -216,7 +216,7 @@ def _run_loop(config_path, history):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Desktop time threshold notification daemon"
+        description="ChronoCue desktop schedule notification daemon"
     )
     parser.add_argument("--config", help="Override schedule configuration path")
     parser.add_argument(

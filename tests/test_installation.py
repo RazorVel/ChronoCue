@@ -99,7 +99,7 @@ class InstallationTest(unittest.TestCase):
 
     @property
     def config(self):
-        return self.home / ".config/chronocue/schedule.json"
+        return self.home / ".config/chronocue/config.json"
 
     @property
     def app(self):
@@ -154,7 +154,7 @@ class InstallationTest(unittest.TestCase):
         for module in ("daemon", "ui"):
             launch = self.launcher(module, env=launch_env)
             self.assertEqual(launch["source"], self.env["XDG_DATA_HOME"] + "/chronocue/src")
-            self.assertEqual(launch["config"], self.env["XDG_CONFIG_HOME"] + "/chronocue/schedule.json")
+            self.assertEqual(launch["config"], self.env["XDG_CONFIG_HOME"] + "/chronocue/config.json")
             self.assertEqual(launch["state"], self.env["XDG_STATE_HOME"])
             self.assertEqual(launch["cache"], self.env["XDG_CACHE_HOME"])
         self.assertFalse((self.root / "INJECTED").exists())
@@ -171,6 +171,18 @@ class InstallationTest(unittest.TestCase):
         launch_env["CHRONOCUE_CONFIG"] = "/other/explicit.json"
         self.assertEqual(self.launcher(env=launch_env)["config"], "/other/explicit.json")
         self.assertFalse(self.config.exists())
+
+    def test_legacy_default_config_is_migrated_without_removing_original(self):
+        legacy = self.home / ".config/chronocue/schedule.json"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text('{"schedules": [{"id": "keep-me"}]}\n')
+
+        result = self.run_script("install.sh")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.config.read_text(), legacy.read_text())
+        self.assertTrue(legacy.is_file())
+        self.assertIn("Migrated existing schedule", result.stdout)
 
     def test_python_requirements_fail_before_mutation(self):
         for check, message in (("version", "Python 3.10"), ("tk", "Missing tkinter")):

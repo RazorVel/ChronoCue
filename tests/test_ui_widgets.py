@@ -46,10 +46,10 @@ class WidgetTest(unittest.TestCase):
         self.root.update()
         entry = load_config(self.path)['schedules'][0]
         self.assertEqual((entry['preset_id'], entry['ringtone']), (identity, 'radar'))
-        self.assertEqual(self.editor.tree.item(entry['id'], 'values')[0], '—')
+        self.assertEqual(self.editor.tree.item(entry['id'], 'values')[0], '◐ Preset off')
         self.editor.preset_action('toggle')
         self.root.update()
-        self.assertEqual(self.editor.tree.item(entry['id'], 'values')[0], '✓')
+        self.assertEqual(self.editor.tree.item(entry['id'], 'values')[0], '● Enabled')
         self.editor.tree.selection_set(entry['id'])
         self.editor.bulk_preset_var.set('Ungrouped')
         self.editor.assign_selected()

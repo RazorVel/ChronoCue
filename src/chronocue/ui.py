@@ -5,7 +5,7 @@ import queue
 import threading
 import uuid
 import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .audio import DEFAULT_RINGTONE, PLAYER, RINGTONES, RINGTONE_BY_ID
 from .config import (
@@ -16,6 +16,7 @@ from .notifier import send_notification
 from .clocks import CountdownStore, StopwatchStore, elapsed_seconds, remaining_seconds
 from .pomodoro import PHASE_NAMES, PomodoroStore, seconds_remaining
 from . import presets
+from .preset_transfer import blank_bundle, export_bundle, import_bundle, load_bundle, save_bundle
 from .state import daemon_is_running
 
 
@@ -30,6 +31,15 @@ def format_duration(seconds, *, fractions=False):
     hours, rest = divmod(whole, 3600)
     minutes, secs = divmod(rest, 60)
     return f'{hours:02d}:{minutes:02d}:{secs:02d}' + (f'.{total % 100:02d}' if fractions else '')
+
+
+def schedule_status(entry, preset_items):
+    if not entry.get('enabled', True):
+        return '○ Paused'
+    preset_id = entry.get('preset_id')
+    if preset_id is not None and not any(item['id'] == preset_id and item.get('enabled', False) for item in preset_items):
+        return '◐ Preset off'
+    return '● Enabled'
 
 
 class ScheduleEditor:
@@ -110,6 +120,12 @@ class ScheduleEditor:
         self.toggle_button.grid(row=4, column=0, sticky='ew', pady=(8, 0))
         ttk.Label(sidebar, text='Deactivating keeps schedules saved.\nUngrouped reminders stay active.', wraplength=225).grid(
             row=5, column=0, sticky='w', pady=(12, 0))
+        ttk.Label(sidebar, text='Preset files', style='Heading.TLabel').grid(row=6, column=0, sticky='w', pady=(18, 6))
+        file_buttons = ttk.Frame(sidebar)
+        file_buttons.grid(row=7, column=0, sticky='ew')
+        ttk.Button(file_buttons, text='Import', command=self.import_presets).pack(fill='x', pady=2)
+        ttk.Button(file_buttons, text='Export selected', command=self.export_selected_preset).pack(fill='x', pady=2)
+        ttk.Button(file_buttons, text='Export template', command=self.export_preset_template).pack(fill='x', pady=2)
 
         panel = ttk.Frame(parent)
         panel.grid(row=0, column=1, sticky='nsew')
@@ -123,7 +139,7 @@ class ScheduleEditor:
         table.columnconfigure(0, weight=1)
         columns = ('enabled', 'time', 'title', 'days', 'preset')
         self.tree = ttk.Treeview(table, columns=columns, show='headings', selectmode='extended', height=10)
-        for column, heading, width in zip(columns, ('On', 'Time', 'Title', 'Days', 'Preset'), (40, 65, 200, 150, 110)):
+        for column, heading, width in zip(columns, ('Status', 'Time', 'Title', 'Days', 'Preset'), (105, 65, 200, 150, 110)):
             self.tree.heading(column, text=heading)
             self.tree.column(column, width=width, minwidth=35, anchor='w')
         self.tree.grid(row=0, column=0, sticky='nsew')
@@ -131,6 +147,8 @@ class ScheduleEditor:
         scroll.grid(row=0, column=1, sticky='ns')
         self.tree.configure(yscrollcommand=scroll.set)
         self.tree.bind('<<TreeviewSelect>>', self.on_select)
+        self.tree.bind('<Button-1>', self.on_schedule_status_click, add='+')
+        self.tree.bind('<space>', self.toggle_selected_schedule)
         toolbar = ttk.Frame(panel)
         toolbar.grid(row=2, column=0, sticky='ew', pady=9)
         ttk.Button(toolbar, text='New schedule', command=self.clear_form).pack(side='left')
@@ -150,11 +168,14 @@ class ScheduleEditor:
         self.preset_var = tk.StringVar(value='Ungrouped')
         self.entry_sound_var = tk.StringVar(value='Use default')
         ttk.Label(form, text='Time').grid(row=0, column=0, sticky='w')
-        ttk.Entry(form, textvariable=self.time_var, width=8).grid(row=0, column=1, sticky='w', padx=(8, 18))
+        self.time_entry = ttk.Entry(form, textvariable=self.time_var, width=8)
+        self.time_entry.grid(row=0, column=1, sticky='w', padx=(8, 18))
         ttk.Label(form, text='Title').grid(row=0, column=2, sticky='w')
-        ttk.Entry(form, textvariable=self.title_var).grid(row=0, column=3, sticky='ew', padx=(8, 0))
+        self.title_entry = ttk.Entry(form, textvariable=self.title_var)
+        self.title_entry.grid(row=0, column=3, sticky='ew', padx=(8, 0))
         ttk.Label(form, text='Message').grid(row=1, column=0, sticky='w', pady=10)
-        ttk.Entry(form, textvariable=self.message_var).grid(row=1, column=1, columnspan=3, sticky='ew', padx=(8, 0))
+        self.message_entry = ttk.Entry(form, textvariable=self.message_var)
+        self.message_entry.grid(row=1, column=1, columnspan=3, sticky='ew', padx=(8, 0))
         ttk.Label(form, text='Preset').grid(row=2, column=0, sticky='w')
         self.preset_combo = ttk.Combobox(form, textvariable=self.preset_var, state='readonly', width=18)
         self.preset_combo.grid(row=2, column=1, sticky='w', padx=(8, 18))
@@ -174,6 +195,8 @@ class ScheduleEditor:
         ttk.Button(actions, text='Save schedule', command=self.save_entry).pack(side='right')
         self.test_button = ttk.Button(actions, text='Test alert', command=self.test_notification)
         self.test_button.pack(side='right', padx=8)
+        for entry in (self.time_entry, self.title_entry, self.message_entry):
+            entry.bind('<Return>', self.save_entry_from_return)
 
     def build_timer(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -364,9 +387,9 @@ class ScheduleEditor:
                 continue
             if self.filter_id.startswith('preset:') and group != self.filter_id[7:]:
                 continue
-            active = presets.schedule_is_active(entry, self.config['presets'])
             self.tree.insert('', 'end', iid=entry['id'], values=(
-                '✓' if active else '—', entry['time'], entry['title'], ' '.join(entry['days']), names.get(group, 'Ungrouped'),
+                schedule_status(entry, self.config['presets']), entry['time'], entry['title'],
+                ' '.join(entry['days']), names.get(group, 'Ungrouped'),
             ))
         retained = [key for key in selection if self.tree.exists(key)]
         if retained:
@@ -471,6 +494,97 @@ class ScheduleEditor:
                 self.refresh_tree()
         except (ValueError, KeyError) as exc:
             messagebox.showerror('Invalid schedule', str(exc))
+
+    def save_entry_from_return(self, _event=None):
+        self.save_entry()
+        return 'break'
+
+    def on_schedule_status_click(self, event):
+        if self.tree.identify_region(event.x, event.y) != 'cell' or self.tree.identify_column(event.x) != '#1':
+            return None
+        entry_id = self.tree.identify_row(event.y)
+        if not entry_id:
+            return None
+        self.tree.selection_set(entry_id)
+        self.toggle_schedule(entry_id)
+        return 'break'
+
+    def toggle_selected_schedule(self, _event=None):
+        selected = self.tree.selection()
+        if len(selected) == 1:
+            self.toggle_schedule(selected[0])
+        return 'break'
+
+    def toggle_schedule(self, entry_id):
+        candidate = deepcopy(self.config)
+        entry = next((item for item in candidate['schedules'] if item['id'] == entry_id), None)
+        if entry is None:
+            messagebox.showerror('Schedule changed', 'This schedule no longer exists. Reload and try again.')
+            return False
+        entry['enabled'] = not entry.get('enabled', True)
+        if not self.commit_config(candidate):
+            return False
+        self.refresh_tree()
+        self.tree.selection_set(entry_id)
+        self.on_select()
+        status = schedule_status(entry, self.config['presets'])
+        if status == '◐ Preset off':
+            self.status_var.set(f"{entry['title']} is enabled but remains paused because its preset is off")
+        else:
+            self.status_var.set(f"{entry['title']}: {status[2:]}")
+        return True
+
+    def export_preset_template(self):
+        self._save_preset_bundle(blank_bundle(), 'chronocue-preset-template.json', 'Preset template exported')
+
+    def export_selected_preset(self):
+        try:
+            if not self.filter_id.startswith('preset:'):
+                raise ValueError('Select a named preset in the sidebar first.')
+            preset = presets.find_preset(self.config, self.filter_id[7:])
+            bundle = export_bundle(self.config, [preset['id']])
+            self._save_preset_bundle(bundle, 'chronocue-preset.json', f"Preset exported: {preset['name']}")
+        except ValueError as exc:
+            messagebox.showerror('Could not export preset', str(exc))
+
+    def _save_preset_bundle(self, bundle, filename, success_message):
+        path = filedialog.asksaveasfilename(
+            parent=self.root, title='Export ChronoCue preset', initialfile=filename,
+            defaultextension='.json', filetypes=(('JSON files', '*.json'), ('All files', '*')),
+        )
+        if not path:
+            return
+        try:
+            save_bundle(bundle, path)
+            self.status_var.set(success_message)
+        except (OSError, ValueError, TypeError) as exc:
+            messagebox.showerror('Could not export preset', str(exc))
+
+    def import_presets(self):
+        path = filedialog.askopenfilename(
+            parent=self.root, title='Import ChronoCue presets',
+            filetypes=(('JSON files', '*.json'), ('All files', '*')),
+        )
+        if not path:
+            return
+        try:
+            candidate, summary = import_bundle(self.config, load_bundle(path))
+        except (OSError, ValueError, TypeError) as exc:
+            messagebox.showerror('Invalid preset file', str(exc))
+            return
+        details = [f"{summary['presets']} preset(s)", f"{summary['schedules']} schedule(s)",
+                   '', 'Imported presets start inactive so reminders cannot fire unexpectedly.']
+        if summary['renamed']:
+            details.extend(['', 'Name conflicts will be imported as copies:'])
+            details.extend(f"• {old} → {new}" for old, new in summary['renamed'])
+        if not messagebox.askyesno('Import preset preview', '\n'.join(details) + '\n\nImport these items?', parent=self.root):
+            return
+        if self.commit_config(candidate):
+            self.filter_id = 'all'
+            self.clear_form()
+            self.refresh_presets()
+            self.refresh_tree()
+            self.status_var.set(f"Imported {summary['presets']} inactive preset(s) with {summary['schedules']} schedule(s)")
 
     def delete_entry(self):
         selected = set(self.tree.selection()) or ({self.selected_id} if self.selected_id else set())

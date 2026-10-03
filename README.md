@@ -4,8 +4,8 @@ A small Linux desktop reminder app with schedule presets, Pomodoro, a countdown 
 a stopwatch, and 32 selectable alert sounds. Built for lightweight desktops such as i3 using
 Python's standard library, Tk, desktop notifications, and a user systemd service.
 
-Version **1.2.0** adds **Timer** and **Stopwatch** tabs, persistent notifications,
-and prompt audio playback. Existing schedules continue to work without manual migration.
+Version **1.3.0** adds one-keystroke schedule saving, immediate status toggles,
+and editable preset import/export files. Existing schedules are migrated safely.
 
 ## Preview
 
@@ -81,7 +81,7 @@ Default locations:
 ~/.local/bin/chronocue-daemon
 ~/.local/bin/chronocue-ui
 ~/.local/share/chronocue/
-~/.config/chronocue/schedule.json
+~/.config/chronocue/config.json
 ~/.config/systemd/user/chronocue.service
 ~/.local/state/chronocue/       # delivery history and clock states
 ~/.cache/chronocue/            # generated ringtone WAV files
@@ -108,10 +108,27 @@ own Enabled setting. Ungrouped schedules always follow their own Enabled setting
 independently of presets. You can rename or duplicate a group. Deleting a preset
 asks for confirmation and removes its schedules; deactivate it to keep them.
 
-The sidebar also filters the table. The **On** column shows whether a schedule
-is effective, combining its own Enabled setting with its preset's state.
+The sidebar also filters the table. The **Status** column shows **Enabled**,
+**Paused**, or **Preset off**, combining the schedule's own setting with its
+preset's state. Click that status cell (or select one row and press Space) to
+toggle an individual schedule immediately without using **Save schedule**.
 Activating a preset follows the normal timing grace period; it does not replay
 old or already-delivered reminders.
+
+While editing schedule details, press Enter in the Time, Title, or Message field
+to save. The same validation as **Save schedule** applies.
+
+### Preset files
+
+Use **Export template** to create a human-editable JSON example, or select a
+named preset and use **Export selected** to create a file containing that preset
+and its schedules. Internal IDs are omitted so the file is easy to edit and can
+be imported repeatedly.
+
+**Import** validates the complete file and shows its preset and schedule counts
+before changing the configuration. Imported presets always start inactive.
+Name conflicts are imported as clearly named copies, leaving existing presets
+untouched. The import is committed atomically only after you confirm the preview.
 
 Edits are saved atomically. If another editor or process changes the file, stale
 saves are rejected with Reload instructions. Opening the editor does not rewrite
@@ -214,7 +231,7 @@ notification and sound together.
 
 ## Configuration
 
-Normally stored at `~/.config/chronocue/schedule.json`. A complete example is in
+Normally stored at `~/.config/chronocue/config.json`. A complete example is in
 [examples/schedule.example.json](examples/schedule.example.json). The first launch
 creates an empty configuration if the file is absent.
 
@@ -322,7 +339,7 @@ CHRONOCUE_CONFIG="$HOME/my-schedule.json" ./scripts/install.sh
 
 Precedence is `--config`, then `CHRONOCUE_CONFIG` in the launcher's environment,
 then its installation default. Direct source/package launches use
-`$XDG_CONFIG_HOME/chronocue/schedule.json`, falling back to `~/.config` when that
+`$XDG_CONFIG_HOME/chronocue/config.json`, falling back to `~/.config` when that
 variable is empty or relative. State and cache have analogous XDG defaults.
 Exporting a variable in a terminal does not change an already-running service.
 

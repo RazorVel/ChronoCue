@@ -232,6 +232,13 @@ class RuntimeTest(unittest.TestCase):
             main(["--config", str(self.config_path), "--check"])
         self.assertEqual(stopped.exception.code, 1)
 
+    def test_help_uses_chronocue_name(self):
+        with patch("sys.stdout", new_callable=io.StringIO) as output, self.assertRaises(SystemExit) as stopped:
+            main(["--help"])
+        self.assertEqual(stopped.exception.code, 0)
+        self.assertIn("ChronoCue desktop schedule notification daemon", output.getvalue())
+        self.assertNotIn("time threshold", output.getvalue().lower())
+
 
 if __name__ == "__main__":
     unittest.main()
