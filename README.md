@@ -1,5 +1,9 @@
 # ChronoCue
 
+<p align="center">
+  <img src="docs/assets/logo.png" alt="ChronoCue logo" width="360">
+</p>
+
 A small Linux desktop reminder app with schedule presets, Pomodoro, a countdown timer,
 a stopwatch, and 32 selectable alert sounds. Built for lightweight desktops such as i3 using
 Python's standard library, Tk, desktop notifications, and a user systemd service.
